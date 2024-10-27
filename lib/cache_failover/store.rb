@@ -148,9 +148,7 @@ module CacheFailover
       true
     end
 
-    REDIS ||=
-
-      private
+    private
 
     def redis_cnxn(init_options)
       @redis_cache_client ||=
@@ -161,6 +159,15 @@ module CacheFailover
           timeout: init_options[:timeout] || 1,
           inherit_socket: true,
           ).new_pool
+    end
+
+    def dalli_cnxn(init_options)
+      @dalli_cache_client ||=
+        Dalli::Client.new(
+          CONFIG[:MEMCACHED_SERVERS],
+          failover: init_options[:failover] || true,
+          expires_in: init_options[:expires_in] || 300
+        )
     end
 
     def cache_db_cnxn(init_options)

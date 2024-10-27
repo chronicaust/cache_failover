@@ -9,7 +9,7 @@ Gem::Specification.new do |gem|
   gem.authors = ["chronicaust"]
   gem.email = ["jamiep@supportabilit.com"]
   gem.summary = %q{ Failover Handling Cache Store for Rails w/ Brotli compression support. (Redis[Hiredis]/Memcached[Dalli]/SolidCache[MySQL/PG])  }
-  gem.description = %q{ This gem enabled automatic failover to a secondary caching method when the primary fails. }
+  gem.description = %q{ This gem enables automatic failover to a secondary caching method when the primary fails. }
   gem.homepage = "https://github.com/chronicaust/cache_failover"
   gem.files = `git ls-files`.split("\n")
   gem.test_files = gem.files.grep(%r{^(spec)/})

@@ -11,6 +11,5 @@
     </content>
     <orderEntry type="jdk" jdkName="RVM: ruby-3.3.1 [global]" jdkType="RUBY_SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" scope="PROVIDED" name="rake (v13.1.0, RVM: ruby-3.3.1 [global]) [gem]" level="application" />
   </component>
 </module>

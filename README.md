@@ -26,6 +26,10 @@ Configure your cache_store normally, but use `CacheFailover::Store` with one arg
 config.cache_store = CacheFailover::Store.new(
   [
     {
+      store: ActiveSupport::Cache::MemCacheStore.new(CONFIG[:MEMCACHED_SERVERS], {}),
+      options: {}
+    },
+    {
       store: ActiveSupport::Cache::RedisCacheStore.new(
         url: CONFIG[:REDIS_URL],
         password: CONFIG[:REDIS_PASSWORD],
@@ -43,7 +47,6 @@ config.cache_store = CacheFailover::Store.new(
 ```
 
 ## WIP
-- Dalli/Memcached support
 - Memory Cache Support
 - File Cache support
 - More options

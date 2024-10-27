@@ -185,6 +185,10 @@ module CacheFailover
           when 'ActiveSupport::Cache::RedisCacheStore'
             (redis_cnxn(init_options).call('ping') == 'PONG' rescue false)
           when 'ActiveSupport::Cache::MemCacheStore'
+            dalli_cnxn(init_options).alive!
+            dalli_cnxn(init_options).delete('cache_test')
+            dalli_cnxn(init_options).add('cache_test', 'success')
+            dalli_cnxn(init_options).get('cache_test') == 'success'
           when 'SolidCache::Store'
             cache_db_cnxn(init_options).with_connection { ActiveRecord::Base.connection.select_value('SELECT 1=1') == 1 }
           when 'ActiveSupport::Cache::MemoryStore'

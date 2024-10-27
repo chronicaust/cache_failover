@@ -1,4 +1,4 @@
-# Cache Failover Gem [![Gem Version]]
+# Cache Failover Gem
 
 ## Installation
 

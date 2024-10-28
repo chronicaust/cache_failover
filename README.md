@@ -1,4 +1,4 @@
-# Cache Failover Gem
+# Cache Failover
 
 ## Installation
 
@@ -32,7 +32,9 @@ Configure your cache_store normally, but use `CacheFailover::Store` with one arg
 config.cache_store = CacheFailover::Store.new(
   [
     {
-      store: ActiveSupport::Cache::MemCacheStore.new(CONFIG[:MEMCACHED_SERVERS], {}),
+      store: ActiveSupport::Cache::MemCacheStore.new(
+        CONFIG[:MEMCACHED_SERVERS]
+      ),
       options: {}
     },
     {

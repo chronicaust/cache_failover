@@ -4,6 +4,8 @@
 
 This Gem allows you to configure multiple cache stores in a failover configuration. If the first cache store fails, this gem will attempt to use the next cache store in the list. If the first cache store comes back online, it will revert to using that store.
 
+This gem also uses MessagePack when possible to store Hash/JSON objects rather than Marshal to store objects more efficiently before compressing them using Brotli compression (which is also more efficient than gzip). 
+
 This is useful for high availability and redundancy, such as using a Redis Cache with SolidCache (DB) as a backup in case Redis goes down.
 
 Keep in mind, if you use your cache as a session store, users will be logged out.
@@ -20,7 +22,7 @@ You will need at least 2 cache stores for failover capability.
   gem 'solid_cache' #  optional, but you will need at least 2 cache stores
   gem 'redis' # optional, but you will need at least 2 cache stores
   gem 'hiredis' # optional, only for redis
-  gem 'dalli' # optional, but you will need at least 2 cache stores (WIP)
+  gem 'dalli' # optional, but you will need at least 2 cache stores
   gem 'cache_failover'
 ```
 

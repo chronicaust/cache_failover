@@ -19,17 +19,37 @@ module CacheFailover
       cache_db: 'cache'
     }
 
-    attr_reader :core_store
-
     def initialize(cache_stores)
-      _core_store = cache_stores.find do |cs|
-        options(cs[:options])
-        Logger.new("log/#{CONFIG[:RAILS_ENV]}.log").info("CacheFailover: caching_up?: #{cs[:store].class.name}")
-        Logger.new("log/#{CONFIG[:RAILS_ENV]}.log").info("CacheFailover: caching_up?: #{options}")
-        Logger.new("log/#{CONFIG[:RAILS_ENV]}.log").info("#{caching_up?(cs[:store], options)}")
-        caching_up?(cs[:store], options)
+      core_stores(cache_stores)
+      core_store
+    end
+
+    def core_store
+      if defined?(Thread.current[:cache_core_store]) && Thread.current[:cache_core_store].present? && caching_up?(Thread.current[:cache_core_store], options)
+        return Thread.current[:cache_core_store]
+      else
+        Thread.current[:cache_core_store] = nil
+        core_stores.each do |cs|
+          next if defined?(Thread.current[:cache_core_store]) && Thread.current[:cache_core_store].present?
+          Thread.current[:cache_core_store] = cs[:store]
+          options(cs[:options])
+          cache_failover_logger.info("CacheFailover: caching_up?: #{cs[:store].class.name}")
+          cache_failover_logger.info("CacheFailover: caching_up?: #{options}")
+          _store_up = caching_up?(cs[:store], options)
+          cache_failover_logger.info("#{_store_up}")
+          if _store_up == true
+            break
+          else
+            Thread.current[:cache_core_store] = nil
+            next
+          end
+        end
       end
-      @core_store = _core_store[:store]
+    end
+
+    def core_stores(core_stores = [])
+      return @core_stores if defined?(@core_stores) && core_stores.blank?
+      @core_stores = core_stores
     end
 
     def options(init_options = {})
@@ -38,6 +58,8 @@ module CacheFailover
     end
 
     def fetch(name, init_options = nil, &block)
+      retries = 0
+      begin
       options(init_options)
 
       if !block_given? && options[:force]
@@ -45,7 +67,7 @@ module CacheFailover
       end
 
       get_value(
-        @core_store.fetch(expanded_cache_key(name), options.merge(compress: false)) do
+        core_store.fetch(expanded_cache_key(name), options.merge(compress: false)) do
           if block_given?
             store_value(block.call, options)
           else
@@ -54,98 +76,177 @@ module CacheFailover
         end,
         options
       )
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def write(name, value, init_options = nil)
-      options(init_options)
+      retries = 0
+      begin
+        options(init_options)
 
-      payload = store_value(value, options)
+        payload = store_value(value, options)
 
-      @core_store.write(
-        expanded_cache_key(name),
-        payload,
-        options.merge(compress: false)
-      )
+        core_store.write(
+          expanded_cache_key(name),
+          payload,
+          options.merge(compress: false)
+        )
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def read(name, init_options = nil)
-      options(init_options)
+      retries = 0
+      begin
+        options(init_options)
 
-      payload = @core_store.read(
-        expanded_cache_key(name),
-        options
-      )
+        payload = core_store.read(
+          expanded_cache_key(name),
+          options
+        )
 
-      get_value(payload, options)
+        get_value(payload, options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def write_multi(hash, init_options = nil)
-      options(init_options)
+      retries = 0
+      begin
+        options(init_options)
 
-      new_hash = hash.map do |key, val|
-        [
-          expanded_cache_key(key),
-          store_value(val, options),
-        ]
+        new_hash = hash.map do |key, val|
+          [
+            expanded_cache_key(key),
+            store_value(val, options),
+          ]
+        end
+
+        core_store.write_multi(
+          new_hash,
+          options.merge(compress: false)
+        )
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
       end
-
-      @core_store.write_multi(
-        new_hash,
-        options.merge(compress: false)
-      )
     end
 
     def read_multi(*names)
-      options = names.extract_options!
-      names = names.map { |name| expanded_cache_key(name) }
-      options(options)
+      retries = 0
+      begin
+        options = names.extract_options!
+        names = names.map { |name| expanded_cache_key(name) }
+        options(options)
 
-      core_store.read_multi(*names, options).map do |key, val|
-        [key, get_value(val, options)]
-      end.to_h
+        core_store.read_multi(*names, options).map do |key, val|
+          [key, get_value(val, options)]
+        end.to_h
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def fetch_multi(*names)
-      options = names.extract_options!
-      expanded_names = names.map { |name| expanded_cache_key(name) }
-      options(options)
+      retries = 0
+      begin
+        options = names.extract_options!
+        expanded_names = names.map { |name| expanded_cache_key(name) }
+        options(options)
 
-      reads = core_store.send(:read_multi_entries, expanded_names, **options)
-      reads.map do |key, val|
-        [key, store_value(val, options)]
-      end.to_h
+        reads = core_store.send(:read_multi_entries, expanded_names, **options)
+        reads.map do |key, val|
+          [key, store_value(val, options)]
+        end.to_h
 
-      writes = {}
-      ordered = names.index_with do |name|
-        reads.fetch(name) { writes[name] = yield(name) }
+        writes = {}
+        ordered = names.index_with do |name|
+          reads.fetch(name) { writes[name] = yield(name) }
+        end
+
+        write_multi(writes)
+        ordered
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
       end
-
-      write_multi(writes)
-      ordered
     end
 
     def exist?(name, init_options = {})
-      @core_store.exist?(expanded_cache_key(name), init_options)
+      retries = 0
+      begin
+        core_store.exist?(expanded_cache_key(name), init_options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def delete(name, init_options = {})
-      @core_store.delete(expanded_cache_key(name), init_options)
+      retries = 0
+      begin
+        core_store.delete(expanded_cache_key(name), init_options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def clear(init_options = {})
-      @core_store.clear(**init_options)
+      retries = 0
+      begin
+        core_store.clear(**init_options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def increment(name, amount = 1, **init_options)
-      @core_store.increment(expanded_cache_key(name), amount, **init_options)
+      retries = 0
+      begin
+        core_store.increment(expanded_cache_key(name), amount, **init_options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def decrement(name, amount = 1, **init_options)
-      @core_store.decrement(expanded_cache_key(name), amount, **init_options)
+      retries = 0
+      begin
+        core_store.decrement(expanded_cache_key(name), amount, **init_options)
+      rescue => ex
+        Thread.current[:cache_core_store] = nil
+        core_store
+        retry if (retries += 1) < core_stores.length
+      end
     end
 
     def self.supports_cache_versioning?
       true
+    end
+
+    def cache_failover_logger
+      @cache_failover_logger ||= Logger.new("log/#{CONFIG[:RAILS_ENV]}.log")
     end
 
     private
@@ -183,7 +284,7 @@ module CacheFailover
         Timeout.timeout((init_options[:timeout] || 1)) do
           case store.class.name
           when 'ActiveSupport::Cache::RedisCacheStore'
-            (redis_cnxn(init_options).call('ping') == 'PONG' rescue false)
+            redis_cnxn(init_options).call('ping') == 'PONG'
           when 'ActiveSupport::Cache::MemCacheStore'
             dalli_cnxn(init_options).alive!
             dalli_cnxn(init_options).delete('cache_test')
@@ -197,6 +298,7 @@ module CacheFailover
           end
         end
       rescue => ex
+        Thread.current[:cache_core_store] = nil
         false
       end
     end
@@ -266,5 +368,7 @@ module CacheFailover
     end
 
   end
+
+
 end
 

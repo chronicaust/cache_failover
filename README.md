@@ -2,6 +2,12 @@
 
 ## Installation
 
+This Gem allows you to configure multiple cache stores in a failover configuration. If the first cache store fails, this gem will attempt to use the next cache store in the list. If the first cache store comes back online, it will revert to using that store.
+
+This is useful for high availability and redundancy, such as using a Redis Cache with SolidCache (DB) as a backup in case Redis goes down.
+
+Keep in mind, if you use your cache as a session store, users will be logged out.
+
 `Gemfile`
 
 ```ruby
@@ -49,5 +55,7 @@ config.cache_store = CacheFailover::Store.new(
 ## WIP
 - Memory Cache Support
 - File Cache support
+- Sync cache stores
+- Add option to not use cache stores after failure unless the application is rebooted.
 - More options
 - Tests
